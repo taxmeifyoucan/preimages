@@ -28,9 +28,9 @@ Make sure you have python3 and install rest of dependencies:
 ```
 cd preimages
 pip3 install -r requirements.txt
-```. 
+```
 
-Now you can run the API using uvicorn. It's available at localhost:8000. 
+Now you can run the API using `uvicorn`. First it will create sqlite database from the rlp data and then becomes available at localhost:8000. Note that database can reach around 2GB. 
 
 ```
 uvicorn main:app --reload
