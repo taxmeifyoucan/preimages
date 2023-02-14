@@ -30,7 +30,7 @@ Make sure you have python3 and install rest of dependencies:
 ```
 cd preimages
 pip3 install -r requirements.txt
-```. 
+```
 
 Now you can run the API using uvicorn. It's available at localhost:8000. 
 
