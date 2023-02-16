@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import subprocess
 import sqlite3
 import hashlib
@@ -6,6 +7,18 @@ import string
 import os
 
 app = FastAPI()
+origins = [
+    "http://localhost",
+    "http://127.0.0.1"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin=origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def decode(data):
     rows = []
@@ -65,10 +78,10 @@ def keccak_hex(hex_string):
     return hashlib.sha3_256(hex_bytes).hexdigest()
 
 
-@app.post("/search")
+@app.post("/")
 async def search(input: str):
-    if len(input) > 64 or not all(c in string.hexdigits for c in input):
-        return {"error": "Invalid input."}
+    if not (len(input) == 40 or len(input) == 64) or not all(c in string.hexdigits for c in input):
+        return {"result": "Invalid input."}
     result = search_db(input)
     return {"result": result}
 
