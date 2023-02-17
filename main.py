@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import subprocess
 import sqlite3
-import hashlib
 import string 
 import os
+from web3 import Web3
 
 app = FastAPI()
 origins = [
@@ -75,11 +75,6 @@ def update_db():
             c.execute("INSERT INTO hash_preimage VALUES (?,?)", row)
     conn.commit()
 
-def keccak_hex(hex_string):
-    hex_bytes = bytes.fromhex(hex_string)
-    return hashlib.sha3_256(hex_bytes).hexdigest()
-
-
 @app.post("/")
 async def search(input: str):
     input = input[2:] if input.startswith('0x') else input
@@ -90,18 +85,17 @@ async def search(input: str):
         if result == "Not found":
            return {"error": result}
         else:
-            h=keccak_hex(input)
+            h=Web3.keccak(hexstr=input).hex()[2:]
             return {"key": input, "preimage": result, "hash": h}
     elif  (len(input) == 40):
         result = search_db_by_preimage(input)
         if result == "Not found":
            return {"error": result}
         else:
-            h=keccak_hex(result)
+            h=Web3.keccak(hexstr=result).hex()[2:]
             return {"key": result, "preimage": input, "hash": h}
     else:
         return {"error": "Invalid input"}
-
 
 if __name__ == "__main__":
     create_db()
