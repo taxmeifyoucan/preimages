@@ -14,7 +14,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin=origins,
+    allow_origins=origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,6 +35,7 @@ def write_to_db(rows):
     c.execute('''CREATE TABLE IF NOT EXISTS hash_preimage
                  (hash text, preimage text)''')
     c.execute("CREATE INDEX IF NOT EXISTS hash_index ON hash_preimage (hash)")
+    c.execute("CREATE INDEX IF NOT EXISTS preimage_index ON hash_preimage (preimage)")
     c.executemany("INSERT INTO hash_preimage VALUES (?,?)", rows)
     conn.commit()
     conn.close()
@@ -46,16 +47,17 @@ def create_db():
     write_to_db(rows)
 
 
-def search_db(input_string):
+def search_db_by_hash(input_string):
     c = conn.cursor()
     c.execute("SELECT preimage FROM hash_preimage WHERE hash=?", (input_string,))
     result = c.fetchone()
-    if result:
-        return result[0]
-    else:
-        c.execute("SELECT hash FROM hash_preimage WHERE preimage=?", (input_string,))
-        result = c.fetchone()
-        return result[0] if result else "Not found"
+    return result[0] if result else "Not found"
+
+def search_db_by_preimage(input_string):
+    c = conn.cursor()
+    c.execute("SELECT hash FROM hash_preimage WHERE preimage=?", (input_string,))
+    result = c.fetchone()
+    return result[0] if result else "Not found"
 
 ## Very slow, don't use for a big db 
 def update_db():
@@ -80,10 +82,26 @@ def keccak_hex(hex_string):
 
 @app.post("/")
 async def search(input: str):
-    if not (len(input) == 40 or len(input) == 64) or not all(c in string.hexdigits for c in input):
-        return {"result": "Invalid input."}
-    result = search_db(input)
-    return {"result": result}
+    input = input[2:] if input.startswith('0x') else input
+    if not all(c in string.hexdigits for c in input):
+        return {"error": "Invalid input"}
+    elif  (len(input) == 64):
+        result = search_db_by_hash(input)
+        if result == "Not found":
+           return {"error": result}
+        else:
+            h=keccak_hex(input)
+            return {"key": input, "preimage": result, "hash": h}
+    elif  (len(input) == 40):
+        result = search_db_by_preimage(input)
+        if result == "Not found":
+           return {"error": result}
+        else:
+            h=keccak_hex(result)
+            return {"key": result, "preimage": input, "hash": h}
+    else:
+        return {"error": "Invalid input"}
+
 
 if __name__ == "__main__":
     create_db()
@@ -93,3 +111,4 @@ if os.path.exists("./preimages.db"):
 else:
     create_db()
     conn = sqlite3.connect("preimages.db")
+

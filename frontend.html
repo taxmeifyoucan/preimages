@@ -1,15 +1,45 @@
 <html>
   <head>
+    <style>
+      #input {
+        width: 500px;
+        margin-bottom: 10px;
+      }
+      #results {
+        margin-top: 10px;
+      }
+      table {
+        border-collapse: collapse;
+      }
+      td {
+        border: 1px solid black;
+        padding: 5px;
+      }
+    </style>
     <script>
       function search() {
         const input = document.getElementById("input").value;
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", "https://preimages.bordel.wtf/search?input=" + input, true);
+        xhr.open("POST", "http://localhost:8000?input=" + input, true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.onreadystatechange = function() {
           if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
             const response = JSON.parse(this.responseText);
-            document.getElementById("result").innerHTML = response.result;
+            if (response.error) {
+              document.getElementById("results").innerHTML = response.error;
+            } else {
+              const preimage = response.preimage;
+              const key = response.key;
+              const hash = response.hash;
+              const table = `
+                <table>
+                  <tr><td>Preimage:</td><td>${preimage}</td></tr>
+                  <tr><td>Address hash:</td><td>${key}</td></tr>
+                  <tr><td>Hash:</td><td>${hash}</td></tr>
+                </table>
+              `;
+              document.getElementById("results").innerHTML = table;
+            }
           }
         };
         xhr.send();
@@ -21,13 +51,12 @@
         }
       }
     </script>
-
   </head>
   <body>
     <h1>Geth preimages lookup </h1>
-    <p>Search for preimage by given hash. <a href="https://github.com/taxmeifyoucan/preimages">Source, docs<a/>.</p>
-    <input type="text" id="input" pattern="^[0-9a-fA-F]{40,64}$" style="width: 500px;" onkeyup="handleKeyUp(event)" />
+    <p>Search for preimage by given hash or vice versa. <a href="https://github.com/taxmeifyoucan/preimages">Source, docs<a/>.</p>
+    <input type="text" id="input" pattern="^[0-9a-fA-F]{40,64}$" onkeyup="handleKeyUp(event)" /><br>
     <button onclick="search()">Search</button>
-    <div id="result"></div>
+    <div id="results"></div>
   </body>
 </html>
