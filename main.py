@@ -6,6 +6,9 @@ import string
 import os
 from web3 import Web3
 
+DB_FILE = os.getenv("DB_FILE", "preimages.db")
+DECODED_DATA_FILE = os.getenv("DECODED_DATA_FILE", "decoded_data")
+
 app = FastAPI()
 origins = [
     "http://localhost",
@@ -20,89 +23,83 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def decode(data):
-    rows = []
-    for i in range(6, len(data), 3):
-        if i + 2 < len(data):
-            hash = data[i+2].strip()
-            preimage = data[i + 1].strip()[22:]
-            rows.append((preimage, hash))
-    return rows
+def write_to_db(f, conn):
+    c = conn.cursor()
+    # skip first 6 lines, geth export info
+    for _ in range(6):
+        f.readline()
 
-def write_to_db(rows):
-    conn = sqlite3.connect('preimages.db')
+    while True:
+        f.readline()
+        hash_line = f.readline()
+        preimage_line = f.readline()
+        if not hash_line or not preimage_line:
+            break
+        hash = hash_line.strip()[22:]
+        preimage = preimage_line.strip()
+        c.execute("INSERT INTO hash_preimage VALUES (?, ?)", (hash, preimage))
+    conn.commit()
+
+
+def create_db():
+   # subprocess.run(["./rlpdump", "./preimages.rlp > decoded_data"])
+    conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS hash_preimage
                  (hash text, preimage text)''')
     c.execute("CREATE INDEX IF NOT EXISTS hash_index ON hash_preimage (hash)")
-    c.execute("CREATE INDEX IF NOT EXISTS preimage_index ON hash_preimage (preimage)")
-    c.executemany("INSERT INTO hash_preimage VALUES (?,?)", rows)
-    conn.commit()
+    with open(DECODED_DATA_FILE, "r") as f:
+        write_to_db(f, conn)
     conn.close()
 
-def create_db():
-    result = subprocess.run(["./rlpdump", "./preimages.rlp"], stdout=subprocess.PIPE)
-    data = result.stdout.decode("utf-8").strip().split("\n")
-    rows = decode(data)
-    write_to_db(rows)
-
-
-def search_db_by_hash(input_string):
+def search_db(input_string):
     c = conn.cursor()
     c.execute("SELECT preimage FROM hash_preimage WHERE hash=?", (input_string,))
     result = c.fetchone()
-    return result[0] if result else "Not found"
-
-def search_db_by_preimage(input_string):
-    c = conn.cursor()
-    c.execute("SELECT hash FROM hash_preimage WHERE preimage=?", (input_string,))
-    result = c.fetchone()
-    return result[0] if result else "Not found"
-
-## Very slow, don't use for a big db 
-def update_db():
-    result = subprocess.run(["./rlpdump", "./preimages.rlp"], stdout=subprocess.PIPE)
-    data = result.stdout.decode("utf-8").strip().split("\n")
-    rows = decode(data)
-    conn = sqlite3.connect('preimages.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS hash_preimage
-                 (hash text, preimage text)''')
-    for row in rows:
-        c.execute("SELECT hash FROM hash_preimage WHERE preimage=?", (row[0],))
+    print(result, input_string)
+    if result: 
+        return result[0], "preimage"
+    else:
+        h=Web3.keccak(hexstr=input_string).hex()[2:]
+        c.execute("SELECT preimage FROM hash_preimage WHERE hash=?", (h,))
         result = c.fetchone()
-        if not result:
-            c.execute("INSERT INTO hash_preimage VALUES (?,?)", row)
-    conn.commit()
+        if result:
+            return h, "hash"
+        else:
+            return None, "Not found"
+
+def get_db_conn():
+    conn = sqlite3.connect(DB_FILE)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 @app.post("/")
 async def search(input: str):
-    input = input[2:] if input.startswith('0x') else input
-    if not all(c in string.hexdigits for c in input):
+    input_string = input[2:] if input.startswith('0x') else input
+    if not all(c in string.hexdigits for c in input_string) or (len(input_string) > 64) or (len(input_string) < 40):
         return {"error": "Invalid input"}
-    elif  (len(input) == 64):
-        result = search_db_by_hash(input)
-        if result == "Not found":
-           return {"error": result}
-        else:
-            h=Web3.keccak(hexstr=input).hex()[2:]
-            return {"key": input, "preimage": result, "hash": h}
-    elif  (len(input) == 40):
-        result = search_db_by_preimage(input)
-        if result == "Not found":
-           return {"error": result}
-        else:
-            h=Web3.keccak(hexstr=result).hex()[2:]
-            return {"key": result, "preimage": input, "hash": h}
     else:
-        return {"error": "Invalid input"}
+        result, status = search_db(input_string)
+        if result:
+            # result is preimage
+            if status == "preimage":
+                h=Web3.keccak(hexstr=input_string).hex()[2:]
+                return {"key": input_string, "preimage": result, "hash": h}
+            # result is hash
+            elif status == "hash":
+                h=Web3.keccak(hexstr=result).hex()[2:]
+                return {"key": result, "preimage": input_string, "hash": h}
+            # not found
+            else:
+                return {"error": status} 
+        else:
+            return {"error": status} 
 
-if __name__ == "__main__":
+
+if not os.path.exists(DB_FILE):
     create_db()
-
-if os.path.exists("./preimages.db"):
-    conn = sqlite3.connect("preimages.db")
+    conn = sqlite3.connect(DB_FILE)
 else:
-    create_db()
-    conn = sqlite3.connect("preimages.db")
-
+    conn = sqlite3.connect(DB_FILE)
