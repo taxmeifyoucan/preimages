@@ -21,7 +21,7 @@ First, you need to export preimages from geth. This requires a geth node, ideall
 ```
 geth db export preimage preimages.rlp
 ```
-Exported data is RLP encoded and to work with it, you need `rlpdump` tool which comes with geth. Clone the [geth repo](https://github.com/ethereum/go-ethereum/, compile `rlpdump`, copy the binary where you prefer and use it to decode export it preimages. 
+Exported data is RLP encoded and to work with it, you need `rlpdump` tool which comes with geth. Compile [`rlpdump` tool from geth repo](https://github.com/ethereum/go-ethereum/) and use it to decode export it preimages. 
 ```
 cd go-ethereum/cmd/rlpdump
 go build
